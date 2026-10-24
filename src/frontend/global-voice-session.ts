@@ -561,7 +561,6 @@ export class GlobalVoiceSession {
       } else {
         this.persistDraftInsert(target, text, offset);
       }
-      toast.success(words().voice.pasted);
     }
   }
 
