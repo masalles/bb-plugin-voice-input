@@ -4,15 +4,28 @@
 export const COMPOSER_EDITOR_SELECTOR =
   '[data-promptbox] .tiptap.ProseMirror, [data-promptbox] textarea, [data-promptbox] [contenteditable="true"]';
 
-let rememberedCaret: number | null = null;
+const EDITOR_IN_BOX_SELECTOR = '.tiptap.ProseMirror, textarea, [contenteditable="true"]';
 
-export function rememberComposerCaret(offset: number | null): void {
+let rememberedCaret: number | null = null;
+// Editor dono da posição lembrada: no split ela não vale para o composer do outro painel.
+let rememberedCaretOwner: HTMLElement | null = null;
+// Último composer em que o usuário clicou ou digitou.
+let activePromptBox: HTMLElement | null = null;
+
+export function rememberComposerCaret(offset: number | null, owner: HTMLElement | null = null): void {
   if (offset === null || offset < 0) return;
   rememberedCaret = offset;
+  rememberedCaretOwner = owner;
 }
 
 export function resetRememberedComposerCaret(): void {
   rememberedCaret = null;
+  rememberedCaretOwner = null;
+}
+
+export function rememberActiveComposer(from: EventTarget | null): void {
+  const box = (from as Element | null)?.closest?.("[data-promptbox]");
+  if (box) activePromptBox = box as HTMLElement;
 }
 
 export function getRememberedComposerCaret(): number | null {
@@ -47,9 +60,14 @@ function isTextField(editor: HTMLElement): editor is HTMLTextAreaElement | HTMLI
   return editor instanceof HTMLTextAreaElement || editor instanceof HTMLInputElement;
 }
 
+// Com split há um composer por painel. Vale o do foco, depois o do último clique;
+// o primeiro do DOM só entra quando nenhum painel foi tocado.
 export function findComposerEditor(): HTMLElement | null {
   if (typeof document === "undefined") return null;
-  return document.querySelector<HTMLElement>(COMPOSER_EDITOR_SELECTOR);
+  const focusedBox = (document.activeElement as Element | null)?.closest?.("[data-promptbox]") as HTMLElement | null;
+  const box = focusedBox ?? (activePromptBox?.isConnected ? activePromptBox : null);
+  const own = box?.querySelector<HTMLElement>(EDITOR_IN_BOX_SELECTOR);
+  return own ?? document.querySelector<HTMLElement>(COMPOSER_EDITOR_SELECTOR);
 }
 
 export function getComposerPlainText(editor: HTMLElement): string {
@@ -82,14 +100,17 @@ export function rememberComposerCaretFromDocument(): void {
   const editor = findComposerEditor();
   if (!editor) return;
   const offset = getComposerCaretOffset(editor);
-  rememberComposerCaret(offset);
+  rememberComposerCaret(offset, editor);
 }
 
-export function resolveComposerInsertOffset(existingLength: number): number {
-  const editor = findComposerEditor();
+export function resolveComposerInsertOffset(
+  existingLength: number,
+  editor: HTMLElement | null = findComposerEditor(),
+): number {
   const live = editor ? getComposerCaretOffset(editor) : null;
   if (live !== null) return Math.max(0, Math.min(live, existingLength));
-  if (rememberedCaret !== null) return Math.max(0, Math.min(rememberedCaret, existingLength));
+  const rememberedHere = rememberedCaretOwner === null || rememberedCaretOwner === editor;
+  if (rememberedCaret !== null && rememberedHere) return Math.max(0, Math.min(rememberedCaret, existingLength));
   return existingLength;
 }
 
@@ -152,6 +173,6 @@ export function insertTranscriptAtCaret(editor: HTMLElement, transcript: string,
     document.execCommand("insertText", false, planned.piece);
   } catch {}
 
-  rememberComposerCaret(planned.offset + planned.piece.length);
+  rememberComposerCaret(planned.offset + planned.piece.length, editor);
   return { text: planned.text, piece: planned.piece };
 }

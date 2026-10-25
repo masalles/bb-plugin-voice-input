@@ -128,6 +128,8 @@ export class GlobalVoiceSession {
   private animationFrame: number | null = null;
   private wakeLockSentinel: { release: () => Promise<void> } | null = null;
 
+  private recordedEditor: HTMLElement | null = null;
+
   private transcribeFn: TranscribeFunction | null = null;
   private navigateFn: ((threadId?: string) => void) | null = null;
 
@@ -216,6 +218,8 @@ export class GlobalVoiceSession {
     }
 
     this.recordedChunks = [];
+    // No split, o texto volta ao composer do painel onde a gravação começou.
+    this.recordedEditor = findComposerEditor();
     this.updateSnapshot({
       state: "recording",
       target,
@@ -512,6 +516,16 @@ export class GlobalVoiceSession {
   private deliverTranscript(text: string, target: VoiceTarget | null) {
     if (!target) return;
 
+    // O editor do painel de origem ainda existe: insere só nele. O próprio editor grava o rascunho
+    // na chave certa; espalhar o texto por chaves de localStorage atingia o outro painel.
+    const recorded = this.recordedEditor;
+    this.recordedEditor = null;
+    if (recorded?.isConnected) {
+      const liveLength = getComposerPlainText(recorded).length;
+      insertTranscriptAtCaret(recorded, text, resolveComposerInsertOffset(liveLength, recorded));
+      return;
+    }
+
     const currentPath = window.location.pathname;
     const isCurrentlyInTarget =
       target.kind === "thread" && target.threadId
@@ -565,6 +579,7 @@ export class GlobalVoiceSession {
   }
 
   public cancelRecording() {
+    this.recordedEditor = null;
     this.cleanupAudio();
     this.recordedChunks = [];
     this.updateSnapshot({ state: "idle", target: null, error: null });

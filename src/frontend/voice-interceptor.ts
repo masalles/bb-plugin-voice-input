@@ -3,7 +3,7 @@
 // 2. Отображает аккуратную панель записи с живой анимацией звуковой волны в поле ввода.
 // 3. Следует за пользователем при переходах между чатами без бесконечных циклов DOM и просадок FPS.
 
-import { rememberComposerCaretFromDocument } from "./composer-insert.ts";
+import { findComposerEditor, rememberActiveComposer, rememberComposerCaretFromDocument } from "./composer-insert.ts";
 import { globalVoiceSession, type VoiceTarget } from "./global-voice-session.ts";
 import { loadFrontendLanguage, words } from "./words.ts";
 import {
@@ -97,9 +97,7 @@ export function findVoiceButton(target: EventTarget | null): HTMLElement | null 
 export function resolveCurrentVoiceTarget(): VoiceTarget {
   let promptContext: string | undefined;
   try {
-    const editor = document.querySelector(
-      '[data-promptbox] .tiptap.ProseMirror, [data-promptbox] textarea, [data-promptbox] [contenteditable="true"]',
-    );
+    const editor = findComposerEditor();
     if (editor?.textContent) {
       promptContext = editor.textContent.slice(0, 500);
     }
@@ -381,6 +379,10 @@ export function mountVoiceInputInterceptor({ signal }: { signal?: AbortSignal } 
     applyPttAction(next.action === "none" ? "stop" : next.action);
   };
 
+  // Registrados antes do handleMicTrigger: ele precisa já saber em qual painel o clique caiu.
+  const trackComposer = (event: Event) => rememberActiveComposer(event.target);
+  window.addEventListener("pointerdown", trackComposer, { capture: true, signal });
+  window.addEventListener("focusin", trackComposer, { capture: true, signal });
   window.addEventListener("pointerdown", handleMicTrigger, { capture: true, signal });
   window.addEventListener("click", handleMicTrigger, { capture: true, signal });
   window.addEventListener("keydown", onKeyDown, { capture: true, signal });
